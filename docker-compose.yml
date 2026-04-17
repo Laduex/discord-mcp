@@ -11,6 +11,11 @@ services:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-http}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      UTAK_GRAPHQL_URL: ${UTAK_GRAPHQL_URL:-https://fingql.utak.io/graphql}
+      UTAK_UIDS: ${UTAK_UIDS:-}
+      UTAK_TIMEZONE: ${UTAK_TIMEZONE:-Asia/Manila}
+      UTAK_GRAPHQL_AUTH_HEADER: ${UTAK_GRAPHQL_AUTH_HEADER:-}
+      UTAK_GRAPHQL_COOKIE: ${UTAK_GRAPHQL_COOKIE:-}
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8085/actuator/health | grep -q '\"status\":\"UP\"'"]
       interval: 30s
