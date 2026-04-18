@@ -360,7 +360,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         try {
             GuildChannel channel = forumOption.getAsChannel();
             if (channel.getType() == ChannelType.FORUM) {
-                return channel.asForumChannel();
+                return (ForumChannel) channel;
             }
         } catch (RuntimeException ignored) {
             // Some autocomplete payloads can omit resolved channel objects; fallback to id lookup below.
