@@ -9,6 +9,7 @@ import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInterac
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.Command;
+import net.dv8tion.jda.api.interactions.commands.OptionMapping;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -93,8 +94,8 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        var forumOption = event.getOption(ORDER_FORUM_OPTION);
-        if (forumOption == null || !(forumOption.getAsChannel() instanceof ForumChannel forum)) {
+        ForumChannel forum = resolveForumChannel(event.getOption(ORDER_FORUM_OPTION));
+        if (forum == null) {
             event.replyChoices(List.of()).queue();
             return;
         }
@@ -152,14 +153,15 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         var messageOption = event.getOption(ORDER_MESSAGE_OPTION);
         var tagsOption = event.getOption(ORDER_TAGS_OPTION);
 
-        if (forumOption == null || messageOption == null) {
+        if (forumOption == null) {
             event.reply("Missing required options. Use `/order forum:<forum> tags:<tag1, tag2> message:<order text>`.")
                     .setEphemeral(true)
                     .queue();
             return;
         }
 
-        if (!(forumOption.getAsChannel() instanceof ForumChannel forum)) {
+        ForumChannel forum = resolveForumChannel(forumOption);
+        if (forum == null) {
             event.reply("Please select a valid forum channel in the `forum` option.").setEphemeral(true).queue();
             return;
         }
@@ -171,12 +173,11 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        String orderMessage = messageOption.getAsString().trim();
-        if (orderMessage.isBlank()) {
-            event.reply("`message` cannot be empty.").setEphemeral(true).queue();
-            return;
+        String orderMessage = messageOption != null ? messageOption.getAsString().trim() : "";
+        String postBody = member.getAsMention();
+        if (!orderMessage.isBlank()) {
+            postBody = postBody + "\n" + orderMessage;
         }
-        String postBody = member.getAsMention() + "\n" + orderMessage;
         if (postBody.length() > DISCORD_MESSAGE_MAX_LENGTH) {
             event.reply("`message` is too long after adding your @mention. Discord allows up to %d characters."
                             .formatted(DISCORD_MESSAGE_MAX_LENGTH))
@@ -216,7 +217,10 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         }
 
         List<String> requestedTokens = parseTagTokens(tagsRaw);
-        if (requestedTokens.isEmpty() || requestedTokens.size() > MAX_FORUM_TAGS_PER_POST) {
+        if (requestedTokens.isEmpty()) {
+            return List.of();
+        }
+        if (requestedTokens.size() > MAX_FORUM_TAGS_PER_POST) {
             return null;
         }
 
@@ -336,13 +340,20 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 .map(ForumTag::getName)
                 .collect(Collectors.joining(", "));
 
-        if (tagsRaw == null || tagsRaw.isBlank()) {
-            return "Please provide 1 to %d tags in `tags` (comma-separated). Available tags in %s: %s"
-                    .formatted(MAX_FORUM_TAGS_PER_POST, forum.getAsMention(), availableTagNames);
+        return "Invalid `tags` value. Use comma-separated tag names or tag IDs (max %d), or leave `tags` empty. Available tags in %s: %s"
+                .formatted(MAX_FORUM_TAGS_PER_POST, forum.getAsMention(), availableTagNames);
+    }
+
+    private ForumChannel resolveForumChannel(OptionMapping forumOption) {
+        if (forumOption == null) {
+            return null;
         }
 
-        return "Invalid `tags` value. Use comma-separated tag names or tag IDs (max %d). Available tags in %s: %s"
-                .formatted(MAX_FORUM_TAGS_PER_POST, forum.getAsMention(), availableTagNames);
+        var channel = forumOption.getAsChannel();
+        if (channel.getType() != ChannelType.FORUM) {
+            return null;
+        }
+        return channel.asForumChannel();
     }
 
     private boolean canMemberCreateForumPost(Member member, ForumChannel channel) {
