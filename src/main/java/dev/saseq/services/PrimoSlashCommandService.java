@@ -4,6 +4,7 @@ import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.entities.channel.concrete.ForumChannel;
+import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel;
 import net.dv8tion.jda.api.entities.channel.forums.ForumTag;
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
@@ -94,7 +95,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        ForumChannel forum = resolveForumChannel(event.getOption(ORDER_FORUM_OPTION));
+        ForumChannel forum = resolveForumChannel(event.getOption(ORDER_FORUM_OPTION), event.getGuild());
         if (forum == null) {
             event.replyChoices(List.of()).queue();
             return;
@@ -160,7 +161,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        ForumChannel forum = resolveForumChannel(forumOption);
+        ForumChannel forum = resolveForumChannel(forumOption, event.getGuild());
         if (forum == null) {
             event.reply("Please select a valid forum channel in the `forum` option.").setEphemeral(true).queue();
             return;
@@ -351,16 +352,34 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 .formatted(MAX_FORUM_TAGS_PER_POST, forum.getAsMention(), availableTagNames);
     }
 
-    private ForumChannel resolveForumChannel(OptionMapping forumOption) {
+    private ForumChannel resolveForumChannel(OptionMapping forumOption, net.dv8tion.jda.api.entities.Guild guild) {
         if (forumOption == null) {
             return null;
         }
 
-        var channel = forumOption.getAsChannel();
-        if (channel.getType() != ChannelType.FORUM) {
+        try {
+            GuildChannel channel = forumOption.getAsChannel();
+            if (channel.getType() == ChannelType.FORUM) {
+                return channel.asForumChannel();
+            }
+        } catch (RuntimeException ignored) {
+            // Some autocomplete payloads can omit resolved channel objects; fallback to id lookup below.
+        }
+
+        if (guild == null) {
             return null;
         }
-        return channel.asForumChannel();
+
+        String rawChannelId = forumOption.getAsString();
+        if (rawChannelId == null || rawChannelId.isBlank()) {
+            return null;
+        }
+
+        try {
+            return guild.getForumChannelById(rawChannelId);
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private boolean canMemberCreateForumPost(Member member, ForumChannel channel) {
