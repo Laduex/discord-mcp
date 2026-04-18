@@ -183,7 +183,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 .limit(MAX_SELECT_OPTIONS)
                 .forEach(forum -> menuBuilder.addOption(forum.getName(), forum.getId(), forum.getAsMention()));
 
-        StringBuilder response = new StringBuilder("Select the forum where you want to post your order.");
+        StringBuilder response = new StringBuilder("Where would you like to post your order?");
         if (availableForums.size() > MAX_SELECT_OPTIONS) {
             response.append("\nShowing the first ").append(MAX_SELECT_OPTIONS).append(" forums by name.");
         }
@@ -239,7 +239,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 .limit(MAX_SELECT_OPTIONS)
                 .forEach(tag -> menuBuilder.addOption(tag.getName(), tag.getId()));
 
-        event.reply("Select up to %d tags for **%s**, then submit."
+        event.reply("Choose up to %d tags for **%s**, then submit."
                         .formatted(MAX_FORUM_TAGS_PER_POST, forum.getName()))
                 .setEphemeral(true)
                 .addActionRow(menuBuilder.build())
@@ -318,7 +318,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         action.queue(
                 forumPost -> {
                     orderSessions.remove(sessionId);
-                    event.reply("Order posted in %s with title **%s**: %s"
+                    event.reply("All set. Your order has been posted in %s with the title **%s**: %s."
                                     .formatted(forum.getAsMention(), postTitle, forumPost.getThreadChannel().getAsMention()))
                             .setEphemeral(true)
                             .queue();
