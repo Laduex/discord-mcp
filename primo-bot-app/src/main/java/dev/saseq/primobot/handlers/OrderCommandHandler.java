@@ -1,27 +1,19 @@
-package dev.saseq.services;
+package dev.saseq.primobot.handlers;
 
+import dev.saseq.primobot.commands.PrimoCommands;
 import net.dv8tion.jda.api.Permission;
 import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.entities.channel.concrete.ForumChannel;
-import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel;
 import net.dv8tion.jda.api.entities.channel.forums.ForumTag;
+import net.dv8tion.jda.api.entities.channel.middleman.GuildChannel;
 import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
-import net.dv8tion.jda.api.hooks.ListenerAdapter;
 import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.OptionMapping;
-import net.dv8tion.jda.api.interactions.commands.OptionType;
-import net.dv8tion.jda.api.interactions.commands.build.CommandData;
-import net.dv8tion.jda.api.interactions.commands.build.Commands;
-import net.dv8tion.jda.api.interactions.commands.build.OptionData;
 import net.dv8tion.jda.api.utils.messages.MessageCreateData;
-import org.springframework.stereotype.Service;
+import org.springframework.stereotype.Component;
 
-import java.math.BigDecimal;
-import java.math.MathContext;
-import java.math.RoundingMode;
-import java.text.DecimalFormat;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -35,20 +27,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-@Service
-public class PrimoSlashCommandService extends ListenerAdapter {
-
-    private static final String COMMAND_VAT = "vat";
-    private static final String COMMAND_ORDER = "order";
-
-    private static final String ORDER_FORUM_OPTION = "forum";
-    private static final String ORDER_TAGS_OPTION = "tags";
-    private static final String ORDER_MESSAGE_OPTION = "message";
-
-    private static final BigDecimal ONE_HUNDRED = BigDecimal.valueOf(100);
-    private static final BigDecimal FIXED_VAT_RATE = BigDecimal.valueOf(12);
-    private static final MathContext MC = MathContext.DECIMAL64;
-
+@Component
+public class OrderCommandHandler {
     private static final DateTimeFormatter ORDER_TITLE_FORMAT = DateTimeFormatter.ofPattern("MMMM d | EEEE", Locale.ENGLISH);
     private static final int MAX_FORUM_TAGS_PER_POST = 5;
     private static final int DISCORD_MESSAGE_MAX_LENGTH = 2000;
@@ -56,97 +36,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
     private static final int DISCORD_CHOICE_VALUE_MAX_LENGTH = 100;
     private static final Pattern SNOWFLAKE_PATTERN = Pattern.compile("\\d+");
 
-    public static CommandData buildVatSlashCommand() {
-        return Commands.slash(COMMAND_VAT, "Calculate VAT totals for POS or invoices")
-                .addOptions(
-                        new OptionData(OptionType.NUMBER, "amount", "Amount to calculate from", true),
-                        new OptionData(OptionType.STRING, "basis", "Select whether the amount is VAT Inclusive or VAT Exclusive", true)
-                                .addChoice("VAT Inclusive", "inclusive")
-                                .addChoice("VAT Exclusive", "exclusive")
-                );
-    }
-
-    public static CommandData buildOrderSlashCommand() {
-        return Commands.slash(COMMAND_ORDER, "Create a forum order post in one command")
-                .addOptions(
-                        new OptionData(OptionType.CHANNEL, ORDER_FORUM_OPTION, "Forum channel to post in", true)
-                                .setChannelTypes(ChannelType.FORUM),
-                        new OptionData(OptionType.STRING, ORDER_TAGS_OPTION, "Choose tags (comma-separated; autocomplete supported)", true)
-                                .setAutoComplete(true),
-                        new OptionData(OptionType.STRING, ORDER_MESSAGE_OPTION, "Order body content", true)
-                );
-    }
-
-    @Override
-    public void onSlashCommandInteraction(SlashCommandInteractionEvent event) {
-        if (COMMAND_VAT.equals(event.getName())) {
-            handleVat(event);
-            return;
-        }
-        if (COMMAND_ORDER.equals(event.getName())) {
-            handleOrder(event);
-            return;
-        }
-    }
-
-    @Override
-    public void onCommandAutoCompleteInteraction(CommandAutoCompleteInteractionEvent event) {
-        if (!COMMAND_ORDER.equals(event.getName())) {
-            return;
-        }
-        if (!ORDER_TAGS_OPTION.equals(event.getFocusedOption().getName())) {
-            return;
-        }
-
-        OptionMapping forumOption = event.getOption(ORDER_FORUM_OPTION);
-        ForumChannel forum = resolveForumChannel(forumOption, event.getGuild());
-        if (forum == null) {
-            event.replyChoices(List.of()).queue();
-            return;
-        }
-
-        List<Command.Choice> choices = buildTagAutocompleteChoices(forum, event.getFocusedOption().getValue());
-        event.replyChoices(choices).queue();
-    }
-
-    private void handleVat(SlashCommandInteractionEvent event) {
-        var amountOption = event.getOption("amount");
-        var basisOption = event.getOption("basis");
-
-        if (amountOption == null || basisOption == null) {
-            event.reply("Missing required options. Use `/vat amount:<number> basis:<inclusive|exclusive>`.").setEphemeral(true).queue();
-            return;
-        }
-
-        BigDecimal amount = BigDecimal.valueOf(amountOption.getAsDouble());
-        String basis = basisOption.getAsString();
-
-        if (amount.compareTo(BigDecimal.ZERO) < 0) {
-            event.reply("Amount must be zero or greater.").setEphemeral(true).queue();
-            return;
-        }
-
-        VatResult result = calculateVat(amount, FIXED_VAT_RATE, basis);
-
-        String response = """
-                **Primo VAT Calculator**
-                Basis: %s
-                Rate: %s%% (fixed)
-                Net (VAT Exclusive): %s
-                VAT: %s
-                Gross (VAT Inclusive): %s
-                """.formatted(
-                result.basisLabel,
-                formatNumber(FIXED_VAT_RATE),
-                formatMoney(result.netAmount),
-                formatMoney(result.vatAmount),
-                formatMoney(result.grossAmount)
-        );
-
-        event.reply(response).queue();
-    }
-
-    private void handleOrder(SlashCommandInteractionEvent event) {
+    public void handle(SlashCommandInteractionEvent event) {
         var guild = event.getGuild();
         var member = event.getMember();
         if (guild == null || member == null) {
@@ -154,9 +44,9 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        var forumOption = event.getOption(ORDER_FORUM_OPTION);
-        var messageOption = event.getOption(ORDER_MESSAGE_OPTION);
-        var tagsOption = event.getOption(ORDER_TAGS_OPTION);
+        var forumOption = event.getOption(PrimoCommands.ORDER_FORUM_OPTION);
+        var messageOption = event.getOption(PrimoCommands.ORDER_MESSAGE_OPTION);
+        var tagsOption = event.getOption(PrimoCommands.ORDER_TAGS_OPTION);
 
         if (forumOption == null || tagsOption == null || messageOption == null) {
             event.reply("Missing required options. Use `/order forum:<forum> tags:<tag1, tag2> message:<order text>`.")
@@ -165,7 +55,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        ForumChannel forum = resolveForumChannel(forumOption, event.getGuild());
+        ForumChannel forum = resolveForumChannel(forumOption, guild);
         if (forum == null) {
             event.reply("Please select a valid forum channel in the `forum` option.").setEphemeral(true).queue();
             return;
@@ -215,6 +105,18 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                         .setEphemeral(true)
                         .queue()
         );
+    }
+
+    public void handleAutocomplete(CommandAutoCompleteInteractionEvent event) {
+        OptionMapping forumOption = event.getOption(PrimoCommands.ORDER_FORUM_OPTION);
+        ForumChannel forum = resolveForumChannel(forumOption, event.getGuild());
+        if (forum == null) {
+            event.replyChoices(List.of()).queue();
+            return;
+        }
+
+        List<Command.Choice> choices = buildTagAutocompleteChoices(forum, event.getFocusedOption().getValue());
+        event.replyChoices(choices).queue();
     }
 
     private List<ForumTag> resolveForumTags(ForumChannel forum, String tagsRaw) {
@@ -423,56 +325,5 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         boolean hasVisibility = member.hasPermission(channel, Permission.VIEW_CHANNEL);
         boolean canSend = member.hasPermission(channel, Permission.MESSAGE_SEND);
         return hasVisibility && canSend;
-    }
-
-    private VatResult calculateVat(BigDecimal amount, BigDecimal vatRatePercent, String basis) {
-        BigDecimal rateFraction = vatRatePercent.divide(ONE_HUNDRED, MC);
-        BigDecimal net;
-        BigDecimal vat;
-        BigDecimal gross;
-        String basisLabel;
-
-        if ("inclusive".equalsIgnoreCase(basis) || "gross".equalsIgnoreCase(basis)) {
-            gross = amount;
-            BigDecimal divisor = BigDecimal.ONE.add(rateFraction, MC);
-            net = gross.divide(divisor, MC);
-            vat = gross.subtract(net, MC);
-            basisLabel = "Gross (VAT Inclusive)";
-        } else if ("exclusive".equalsIgnoreCase(basis) || "net".equalsIgnoreCase(basis)) {
-            net = amount;
-            vat = net.multiply(rateFraction, MC);
-            gross = net.add(vat, MC);
-            basisLabel = "Net (VAT Exclusive)";
-        } else {
-            throw new IllegalArgumentException("basis must be either 'inclusive' or 'exclusive'");
-        }
-
-        return new VatResult(
-                basisLabel,
-                roundMoney(net),
-                roundMoney(vat),
-                roundMoney(gross)
-        );
-    }
-
-    private BigDecimal roundMoney(BigDecimal value) {
-        return value.setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private String formatMoney(BigDecimal value) {
-        return "PHP " + formatNumber(value);
-    }
-
-    private String formatNumber(BigDecimal value) {
-        DecimalFormat format = new DecimalFormat("#,##0.00");
-        return format.format(value);
-    }
-
-    private record VatResult(
-            String basisLabel,
-            BigDecimal netAmount,
-            BigDecimal vatAmount,
-            BigDecimal grossAmount
-    ) {
     }
 }

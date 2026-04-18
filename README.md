@@ -21,6 +21,9 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) s
 designed to integrate Discord bots with MCP-compatible applications such as Claude, ChatGPT etc. It allows AI assistants to interact with 
 Discord by managing channels, sending messages, and retrieving server information. Ideal for building powerful Discord automation and AI-driven workflows.
 
+This repository now contains two deployables in one monorepo:
+- `discord-mcp-app`: MCP server and Discord tool surface (`http://localhost:8085/mcp`)
+- `primo-bot-app`: standalone Primo slash command bot for `/order` and `/vat` (`http://localhost:8086/actuator/health`)
 
 ## 🔬 Installation
 
@@ -82,7 +85,7 @@ DISCORD_GUILD_ID=<OPTIONAL_DEFAULT_SERVER_ID>
 EOF
 ```
 
-#### 4) Start one shared MCP server container
+#### 4) Start both services
 ```bash
 docker compose up -d --build
 ```
@@ -90,12 +93,16 @@ docker compose up -d --build
 #### 5) Verify
 ```bash
 docker ps --filter name=discord-mcp
+docker ps --filter name=primo-bot
 curl -fsS http://localhost:8085/actuator/health
+curl -fsS http://localhost:8086/actuator/health
 ```
 
 Default MCP endpoint URL (HTTP profile): `http://localhost:8085/mcp`
 
-Health endpoint (Actuator): `http://localhost:8085/actuator/health`
+Service health endpoints:
+- `discord-mcp`: `http://localhost:8085/actuator/health`
+- `primo-bot`: `http://localhost:8086/actuator/health`
 
 </details>
 
@@ -115,17 +122,17 @@ git clone https://github.com/SaseQ/discord-mcp
 
 ```bash
 cd discord-mcp
-mvn clean package # The jar file will be available in the /target directory
+mvn clean package # JAR files will be available in module /target directories
 ```
 
 #### 3) Configure AI client
-Run the JAR as a long-running server:
+Run the MCP JAR as a long-running server:
 
 ```bash
 DISCORD_TOKEN=<YOUR_DISCORD_BOT_TOKEN> \
 DISCORD_GUILD_ID=<OPTIONAL_DEFAULT_SERVER_ID> \
 SPRING_PROFILES_ACTIVE=http \
-java -jar /absolute/path/to/discord-mcp-1.0.0.jar
+java -jar /absolute/path/to/discord-mcp-app/target/discord-mcp-app-1.0.0.jar
 ```
 
 > NOTE: The `DISCORD_GUILD_ID` environment variable is optional. When provided, it sets a default Discord server ID so any tool that accepts a `guildId` parameter can omit it.

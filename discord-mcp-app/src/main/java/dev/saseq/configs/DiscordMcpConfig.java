@@ -14,10 +14,8 @@ import dev.saseq.services.ScheduledEventService;
 import dev.saseq.services.InviteService;
 import dev.saseq.services.ChannelPermissionService;
 import dev.saseq.services.EmojiService;
-import dev.saseq.services.PrimoSlashCommandService;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
-import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
@@ -61,47 +59,14 @@ public class DiscordMcpConfig {
     }
 
     @Bean
-    public JDA jda(@Value("${DISCORD_TOKEN:}") String token,
-                   @Value("${DISCORD_GUILD_ID:}") String defaultGuildId,
-                   PrimoSlashCommandService primoSlashCommandService) throws InterruptedException {
+    public JDA jda(@Value("${DISCORD_TOKEN:}") String token) throws InterruptedException {
         if (token == null || token.isEmpty()) {
             System.err.println("ERROR: The environment variable DISCORD_TOKEN is not set. Please set it to run the application properly.");
             System.exit(1);
         }
-        JDA jda = JDABuilder.createDefault(token)
+        return JDABuilder.createDefault(token)
                 .enableIntents(GatewayIntent.GUILD_MEMBERS, GatewayIntent.GUILD_VOICE_STATES, GatewayIntent.SCHEDULED_EVENTS)
-                .addEventListeners(primoSlashCommandService)
                 .build()
                 .awaitReady();
-
-        var vatCommand = PrimoSlashCommandService.buildVatSlashCommand();
-        var orderCommand = PrimoSlashCommandService.buildOrderSlashCommand();
-        if (defaultGuildId != null && !defaultGuildId.isBlank()) {
-            var guild = jda.getGuildById(defaultGuildId);
-            if (guild != null) {
-                syncGuildCommands(guild, vatCommand, orderCommand);
-                return jda;
-            }
-        }
-        jda.upsertCommand(vatCommand).queue();
-        jda.upsertCommand(orderCommand).queue();
-        jda.retrieveCommands().queue(commands ->
-                commands.stream()
-                        .filter(command -> "primo".equals(command.getName()))
-                        .forEach(command -> command.delete().queue())
-        );
-        return jda;
-    }
-
-    private void syncGuildCommands(Guild guild,
-                                   net.dv8tion.jda.api.interactions.commands.build.CommandData vatCommand,
-                                   net.dv8tion.jda.api.interactions.commands.build.CommandData orderCommand) {
-        guild.upsertCommand(vatCommand).queue();
-        guild.upsertCommand(orderCommand).queue();
-        guild.retrieveCommands().queue(commands ->
-                commands.stream()
-                        .filter(command -> "primo".equals(command.getName()))
-                        .forEach(command -> command.delete().queue())
-        );
     }
 }
