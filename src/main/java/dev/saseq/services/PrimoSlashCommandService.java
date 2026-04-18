@@ -62,8 +62,8 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 .addOptions(
                         new OptionData(OptionType.CHANNEL, ORDER_FORUM_OPTION, "Forum channel to post in", true)
                                 .setChannelTypes(ChannelType.FORUM),
-                        new OptionData(OptionType.STRING, ORDER_TAGS_OPTION, "Comma-separated tags (example: urgent, delivery)", false),
-                        new OptionData(OptionType.STRING, ORDER_MESSAGE_OPTION, "Order body content", true)
+                        new OptionData(OptionType.STRING, ORDER_MESSAGE_OPTION, "Order body content", true),
+                        new OptionData(OptionType.STRING, ORDER_TAGS_OPTION, "Comma-separated tags (example: urgent, delivery)", false)
                 );
     }
 
