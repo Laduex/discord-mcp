@@ -285,7 +285,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         }
 
         String raw = tagsRawInput == null ? "" : tagsRawInput;
-        boolean endsWithComma = raw.endsWith(",");
+        boolean endsWithComma = raw.stripTrailing().endsWith(",");
         List<String> enteredTokens = parseTagTokens(raw);
         List<String> lockedTokens = new ArrayList<>(enteredTokens);
         String currentQuery = "";
