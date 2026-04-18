@@ -67,9 +67,9 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 .addOptions(
                         new OptionData(OptionType.CHANNEL, ORDER_FORUM_OPTION, "Forum channel to post in", true)
                                 .setChannelTypes(ChannelType.FORUM),
-                        new OptionData(OptionType.STRING, ORDER_TAGS_OPTION, "Choose tags (comma-separated; autocomplete supported)", false)
+                        new OptionData(OptionType.STRING, ORDER_TAGS_OPTION, "Choose tags (comma-separated; autocomplete supported)", true)
                                 .setAutoComplete(true),
-                        new OptionData(OptionType.STRING, ORDER_MESSAGE_OPTION, "Order body content", false)
+                        new OptionData(OptionType.STRING, ORDER_MESSAGE_OPTION, "Order body content", true)
                 );
     }
 
@@ -153,7 +153,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         var messageOption = event.getOption(ORDER_MESSAGE_OPTION);
         var tagsOption = event.getOption(ORDER_TAGS_OPTION);
 
-        if (forumOption == null) {
+        if (forumOption == null || tagsOption == null || messageOption == null) {
             event.reply("Missing required options. Use `/order forum:<forum> tags:<tag1, tag2> message:<order text>`.")
                     .setEphemeral(true)
                     .queue();
@@ -173,11 +173,13 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        String orderMessage = messageOption != null ? messageOption.getAsString().trim() : "";
-        String postBody = member.getAsMention();
-        if (!orderMessage.isBlank()) {
-            postBody = postBody + "\n" + orderMessage;
+        String orderMessage = messageOption.getAsString().trim();
+        if (orderMessage.isBlank()) {
+            event.reply("`message` cannot be empty.").setEphemeral(true).queue();
+            return;
         }
+
+        String postBody = member.getAsMention() + "\n" + orderMessage;
         if (postBody.length() > DISCORD_MESSAGE_MAX_LENGTH) {
             event.reply("`message` is too long after adding your @mention. Discord allows up to %d characters."
                             .formatted(DISCORD_MESSAGE_MAX_LENGTH))
@@ -186,7 +188,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        String tagsRaw = tagsOption != null ? tagsOption.getAsString() : "";
+        String tagsRaw = tagsOption.getAsString();
         List<ForumTag> selectedTags = resolveForumTags(forum, tagsRaw);
         if (selectedTags == null) {
             event.reply(buildTagUsageError(forum, tagsRaw)).setEphemeral(true).queue();
@@ -213,12 +215,12 @@ public class PrimoSlashCommandService extends ListenerAdapter {
     private List<ForumTag> resolveForumTags(ForumChannel forum, String tagsRaw) {
         List<ForumTag> availableTags = forum.getAvailableTags();
         if (availableTags.isEmpty()) {
-            return tagsRaw == null || tagsRaw.isBlank() ? List.of() : null;
+            return null;
         }
 
         List<String> requestedTokens = parseTagTokens(tagsRaw);
         if (requestedTokens.isEmpty()) {
-            return List.of();
+            return null;
         }
         if (requestedTokens.size() > MAX_FORUM_TAGS_PER_POST) {
             return null;
@@ -333,14 +335,19 @@ public class PrimoSlashCommandService extends ListenerAdapter {
     private String buildTagUsageError(ForumChannel forum, String tagsRaw) {
         List<ForumTag> availableTags = forum.getAvailableTags();
         if (availableTags.isEmpty()) {
-            return "This forum does not have tags. Leave `tags` empty when using `/order`.";
+            return "This forum has no available tags. Please choose a different forum or configure tags first.";
         }
 
         String availableTagNames = availableTags.stream()
                 .map(ForumTag::getName)
                 .collect(Collectors.joining(", "));
 
-        return "Invalid `tags` value. Use comma-separated tag names or tag IDs (max %d), or leave `tags` empty. Available tags in %s: %s"
+        if (tagsRaw == null || tagsRaw.isBlank()) {
+            return "Please select at least 1 tag in `tags` (comma-separated, max %d). Available tags in %s: %s"
+                    .formatted(MAX_FORUM_TAGS_PER_POST, forum.getAsMention(), availableTagNames);
+        }
+
+        return "Invalid `tags` value. Use comma-separated tag names or tag IDs (max %d). Available tags in %s: %s"
                 .formatted(MAX_FORUM_TAGS_PER_POST, forum.getAsMention(), availableTagNames);
     }
 
