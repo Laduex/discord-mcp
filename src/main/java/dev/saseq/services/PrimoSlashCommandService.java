@@ -101,17 +101,7 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         OptionMapping forumOption = event.getOption(ORDER_FORUM_OPTION);
         ForumChannel forum = resolveForumChannel(forumOption, event.getGuild());
         if (forum == null) {
-            var guild = event.getGuild();
-            String forumId = extractChannelId(forumOption);
-            if (guild == null || forumId == null) {
-                event.replyChoices(List.of()).queue();
-                return;
-            }
-
-            guild.retrieveChannelById(ForumChannel.class, forumId).queue(
-                    fetchedForum -> event.replyChoices(buildTagAutocompleteChoices(fetchedForum, event.getFocusedOption().getValue())).queue(),
-                    failure -> event.replyChoices(List.of()).queue()
-            );
+            event.replyChoices(List.of()).queue();
             return;
         }
 
