@@ -17,6 +17,7 @@ import dev.saseq.services.EmojiService;
 import dev.saseq.services.PrimoSlashCommandService;
 import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
+import net.dv8tion.jda.api.entities.Guild;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.ai.tool.method.MethodToolCallbackProvider;
@@ -73,15 +74,34 @@ public class DiscordMcpConfig {
                 .build()
                 .awaitReady();
 
-        var primoCommand = PrimoSlashCommandService.buildPrimoSlashCommand();
+        var vatCommand = PrimoSlashCommandService.buildVatSlashCommand();
+        var orderCommand = PrimoSlashCommandService.buildOrderSlashCommand();
         if (defaultGuildId != null && !defaultGuildId.isBlank()) {
             var guild = jda.getGuildById(defaultGuildId);
             if (guild != null) {
-                guild.upsertCommand(primoCommand).queue();
+                syncGuildCommands(guild, vatCommand, orderCommand);
                 return jda;
             }
         }
-        jda.upsertCommand(primoCommand).queue();
+        jda.upsertCommand(vatCommand).queue();
+        jda.upsertCommand(orderCommand).queue();
+        jda.retrieveCommands().queue(commands ->
+                commands.stream()
+                        .filter(command -> "primo".equals(command.getName()))
+                        .forEach(command -> command.delete().queue())
+        );
         return jda;
+    }
+
+    private void syncGuildCommands(Guild guild,
+                                   net.dv8tion.jda.api.interactions.commands.build.CommandData vatCommand,
+                                   net.dv8tion.jda.api.interactions.commands.build.CommandData orderCommand) {
+        guild.upsertCommand(vatCommand).queue();
+        guild.upsertCommand(orderCommand).queue();
+        guild.retrieveCommands().queue(commands ->
+                commands.stream()
+                        .filter(command -> "primo".equals(command.getName()))
+                        .forEach(command -> command.delete().queue())
+        );
     }
 }
