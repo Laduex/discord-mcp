@@ -5,8 +5,10 @@ import net.dv8tion.jda.api.entities.Member;
 import net.dv8tion.jda.api.entities.channel.ChannelType;
 import net.dv8tion.jda.api.entities.channel.concrete.ForumChannel;
 import net.dv8tion.jda.api.entities.channel.forums.ForumTag;
+import net.dv8tion.jda.api.events.interaction.command.CommandAutoCompleteInteractionEvent;
 import net.dv8tion.jda.api.events.interaction.command.SlashCommandInteractionEvent;
 import net.dv8tion.jda.api.hooks.ListenerAdapter;
+import net.dv8tion.jda.api.interactions.commands.Command;
 import net.dv8tion.jda.api.interactions.commands.OptionType;
 import net.dv8tion.jda.api.interactions.commands.build.CommandData;
 import net.dv8tion.jda.api.interactions.commands.build.Commands;
@@ -46,6 +48,8 @@ public class PrimoSlashCommandService extends ListenerAdapter {
     private static final DateTimeFormatter ORDER_TITLE_FORMAT = DateTimeFormatter.ofPattern("MMMM d - EEEE", Locale.ENGLISH);
     private static final int MAX_FORUM_TAGS_PER_POST = 5;
     private static final int DISCORD_MESSAGE_MAX_LENGTH = 2000;
+    private static final int DISCORD_AUTOCOMPLETE_MAX_CHOICES = 25;
+    private static final int DISCORD_CHOICE_VALUE_MAX_LENGTH = 100;
 
     public static CommandData buildVatSlashCommand() {
         return Commands.slash(COMMAND_VAT, "Calculate VAT totals for POS or invoices")
@@ -62,8 +66,9 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 .addOptions(
                         new OptionData(OptionType.CHANNEL, ORDER_FORUM_OPTION, "Forum channel to post in", true)
                                 .setChannelTypes(ChannelType.FORUM),
-                        new OptionData(OptionType.STRING, ORDER_MESSAGE_OPTION, "Order body content", true),
-                        new OptionData(OptionType.STRING, ORDER_TAGS_OPTION, "Comma-separated tags (example: urgent, delivery)", false)
+                        new OptionData(OptionType.STRING, ORDER_TAGS_OPTION, "Choose tags (comma-separated; autocomplete supported)", false)
+                                .setAutoComplete(true),
+                        new OptionData(OptionType.STRING, ORDER_MESSAGE_OPTION, "Order body content", false)
                 );
     }
 
@@ -77,6 +82,25 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             handleOrder(event);
             return;
         }
+    }
+
+    @Override
+    public void onCommandAutoCompleteInteraction(CommandAutoCompleteInteractionEvent event) {
+        if (!COMMAND_ORDER.equals(event.getName())) {
+            return;
+        }
+        if (!ORDER_TAGS_OPTION.equals(event.getFocusedOption().getName())) {
+            return;
+        }
+
+        var forumOption = event.getOption(ORDER_FORUM_OPTION);
+        if (forumOption == null || !(forumOption.getAsChannel() instanceof ForumChannel forum)) {
+            event.replyChoices(List.of()).queue();
+            return;
+        }
+
+        List<Command.Choice> choices = buildTagAutocompleteChoices(forum, event.getFocusedOption().getValue());
+        event.replyChoices(choices).queue();
     }
 
     private void handleVat(SlashCommandInteractionEvent event) {
@@ -241,6 +265,65 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             }
         }
         return tokens;
+    }
+
+    private List<Command.Choice> buildTagAutocompleteChoices(ForumChannel forum, String tagsRawInput) {
+        List<ForumTag> availableTags = forum.getAvailableTags();
+        if (availableTags.isEmpty()) {
+            return List.of();
+        }
+
+        String raw = tagsRawInput == null ? "" : tagsRawInput;
+        boolean endsWithComma = raw.endsWith(",");
+        List<String> enteredTokens = parseTagTokens(raw);
+        List<String> lockedTokens = new ArrayList<>(enteredTokens);
+        String currentQuery = "";
+
+        if (!endsWithComma && !enteredTokens.isEmpty()) {
+            currentQuery = enteredTokens.get(enteredTokens.size() - 1);
+            lockedTokens.remove(lockedTokens.size() - 1);
+        }
+
+        if (lockedTokens.size() >= MAX_FORUM_TAGS_PER_POST) {
+            return List.of();
+        }
+
+        Set<String> selectedLowerNames = lockedTokens.stream()
+                .map(token -> token.toLowerCase(Locale.ENGLISH))
+                .collect(Collectors.toSet());
+
+        String lowerQuery = currentQuery.toLowerCase(Locale.ENGLISH);
+        List<Command.Choice> choices = new ArrayList<>();
+        for (ForumTag tag : availableTags) {
+            if (choices.size() >= DISCORD_AUTOCOMPLETE_MAX_CHOICES) {
+                break;
+            }
+
+            String lowerName = tag.getName().toLowerCase(Locale.ENGLISH);
+            String lowerId = tag.getId().toLowerCase(Locale.ENGLISH);
+            if (selectedLowerNames.contains(lowerName) || selectedLowerNames.contains(lowerId)) {
+                continue;
+            }
+            if (!lowerQuery.isEmpty() && !lowerName.contains(lowerQuery) && !lowerId.startsWith(lowerQuery)) {
+                continue;
+            }
+
+            String candidateValue = appendToken(lockedTokens, tag.getName());
+            if (candidateValue.length() > DISCORD_CHOICE_VALUE_MAX_LENGTH) {
+                continue;
+            }
+
+            choices.add(new Command.Choice(tag.getName(), candidateValue));
+        }
+
+        return choices;
+    }
+
+    private String appendToken(List<String> existingTokens, String newToken) {
+        if (existingTokens.isEmpty()) {
+            return newToken;
+        }
+        return String.join(", ", existingTokens) + ", " + newToken;
     }
 
     private String buildTagUsageError(ForumChannel forum, String tagsRaw) {
