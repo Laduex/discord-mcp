@@ -31,6 +31,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -47,11 +49,12 @@ public class PrimoSlashCommandService extends ListenerAdapter {
     private static final BigDecimal FIXED_VAT_RATE = BigDecimal.valueOf(12);
     private static final MathContext MC = MathContext.DECIMAL64;
 
-    private static final DateTimeFormatter ORDER_TITLE_FORMAT = DateTimeFormatter.ofPattern("MMMM d - EEEE", Locale.ENGLISH);
+    private static final DateTimeFormatter ORDER_TITLE_FORMAT = DateTimeFormatter.ofPattern("MMMM d | EEEE", Locale.ENGLISH);
     private static final int MAX_FORUM_TAGS_PER_POST = 5;
     private static final int DISCORD_MESSAGE_MAX_LENGTH = 2000;
     private static final int DISCORD_AUTOCOMPLETE_MAX_CHOICES = 25;
     private static final int DISCORD_CHOICE_VALUE_MAX_LENGTH = 100;
+    private static final Pattern SNOWFLAKE_PATTERN = Pattern.compile("\\d+");
 
     public static CommandData buildVatSlashCommand() {
         return Commands.slash(COMMAND_VAT, "Calculate VAT totals for POS or invoices")
@@ -95,9 +98,20 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return;
         }
 
-        ForumChannel forum = resolveForumChannel(event.getOption(ORDER_FORUM_OPTION), event.getGuild());
+        OptionMapping forumOption = event.getOption(ORDER_FORUM_OPTION);
+        ForumChannel forum = resolveForumChannel(forumOption, event.getGuild());
         if (forum == null) {
-            event.replyChoices(List.of()).queue();
+            var guild = event.getGuild();
+            String forumId = extractChannelId(forumOption);
+            if (guild == null || forumId == null) {
+                event.replyChoices(List.of()).queue();
+                return;
+            }
+
+            guild.retrieveChannelById(ForumChannel.class, forumId).queue(
+                    fetchedForum -> event.replyChoices(buildTagAutocompleteChoices(fetchedForum, event.getFocusedOption().getValue())).queue(),
+                    failure -> event.replyChoices(List.of()).queue()
+            );
             return;
         }
 
@@ -315,7 +329,8 @@ public class PrimoSlashCommandService extends ListenerAdapter {
                 continue;
             }
 
-            String candidateValue = appendToken(lockedTokens, tag.getName());
+            boolean canAddMoreTags = lockedTokens.size() + 1 < MAX_FORUM_TAGS_PER_POST;
+            String candidateValue = appendToken(lockedTokens, tag.getName(), canAddMoreTags);
             if (candidateValue.length() > DISCORD_CHOICE_VALUE_MAX_LENGTH) {
                 continue;
             }
@@ -326,11 +341,18 @@ public class PrimoSlashCommandService extends ListenerAdapter {
         return choices;
     }
 
-    private String appendToken(List<String> existingTokens, String newToken) {
+    private String appendToken(List<String> existingTokens, String newToken, boolean addTrailingDelimiter) {
+        String combined;
         if (existingTokens.isEmpty()) {
-            return newToken;
+            combined = newToken;
+        } else {
+            combined = String.join(", ", existingTokens) + ", " + newToken;
         }
-        return String.join(", ", existingTokens) + ", " + newToken;
+
+        if (addTrailingDelimiter) {
+            return combined + ", ";
+        }
+        return combined;
     }
 
     private String buildTagUsageError(ForumChannel forum, String tagsRaw) {
@@ -370,16 +392,38 @@ public class PrimoSlashCommandService extends ListenerAdapter {
             return null;
         }
 
-        String rawChannelId = forumOption.getAsString();
-        if (rawChannelId == null || rawChannelId.isBlank()) {
+        String channelId = extractChannelId(forumOption);
+        if (channelId == null) {
             return null;
         }
 
         try {
-            return guild.getForumChannelById(rawChannelId);
+            return guild.getForumChannelById(channelId);
         } catch (RuntimeException ignored) {
             return null;
         }
+    }
+
+    private String extractChannelId(OptionMapping forumOption) {
+        if (forumOption == null) {
+            return null;
+        }
+
+        String raw = forumOption.getAsString();
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+
+        String trimmed = raw.trim();
+        if (trimmed.chars().allMatch(Character::isDigit)) {
+            return trimmed;
+        }
+
+        Matcher matcher = SNOWFLAKE_PATTERN.matcher(trimmed);
+        if (matcher.find()) {
+            return matcher.group();
+        }
+        return null;
     }
 
     private boolean canMemberCreateForumPost(Member member, ForumChannel channel) {
