@@ -1,0 +1,1 @@
+"""Discord MCP Python package."""

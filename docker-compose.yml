@@ -1,19 +1,22 @@
 services:
   discord-mcp:
     container_name: discord-mcp
-    build:
-      context: .
-    image: saseq/discord-mcp:latest
+    build: .
     restart: unless-stopped
-    ports:
-      - "8085:8085"
+    env_file:
+      - .env
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-http}
       DISCORD_TOKEN: ${DISCORD_TOKEN}
       DISCORD_GUILD_ID: ${DISCORD_GUILD_ID:-}
+      MCP_HOST: ${MCP_HOST:-0.0.0.0}
+      MCP_PORT: ${MCP_PORT:-8085}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      DISCORD_API_BASE_URL: ${DISCORD_API_BASE_URL:-https://discord.com/api/v10}
+    ports:
+      - "8085:8085"
     healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8085/actuator/health | grep -q '\"status\":\"UP\"'"]
+      test: ["CMD-SHELL", "python -c \"import socket; s=socket.create_connection(('127.0.0.1', 8085), 2); s.close()\""]
       interval: 30s
-      timeout: 3s
-      retries: 3
+      timeout: 10s
+      retries: 5
       start_period: 20s

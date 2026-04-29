@@ -1,16 +1,13 @@
-FROM maven:3.9.6-amazoncorretto-17 AS build
+FROM python:3.12-slim
 
 WORKDIR /app
-COPY . .
-RUN mvn clean package -DskipTests
 
-FROM amazoncorretto:17-alpine
-WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-COPY --from=build /app/target/discord-mcp-1.0.0.jar app.jar
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-ENV DISCORD_TOKEN=""
-ENV DISCORD_GUILD_ID=""
-ENV SPRING_PROFILES_ACTIVE="http"
+COPY src ./src
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+CMD ["python", "-m", "src.server"]

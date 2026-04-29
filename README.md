@@ -1,54 +1,107 @@
-# Discord MCP
+# Discord MCP (Python/FastMCP)
 
-Standalone MCP server for Discord administration and automation tools.
+This repo now runs the Discord admin MCP as a Python/FastMCP service instead of Java/Spring.
 
-## Features
+It provides:
 
-- MCP tool endpoints for channels, messages, roles, threads, invites, and moderation
-- Streamable HTTP MCP transport (`/mcp`) for client integrations
-- JDA-backed Discord API operations
+- Streamable HTTP MCP on `/mcp` port `8085`
+- Discord admin and moderation tools backed by the Discord REST API
+- Docker Compose runtime for local and production use
+- A plugin wrapper at `/Users/vaughndazo/plugins/discord-admin-mcp`
 
-## Requirements
+## 0. Current Runtime
 
-- Java 17+
-- Maven 3.9+
-- Discord bot token (`DISCORD_TOKEN`)
+- Local runtime: `/Users/vaughndazo/Documents/LDX/Apps/discord-mcp`
+- Local endpoint: `http://localhost:8085/mcp`
+- Production/plugin endpoint: `http://100.127.158.115:8085/mcp`
 
-## Environment
-
-Create `.env` from `.env.example`:
+## 1. Configure Environment
 
 ```bash
 cp .env.example .env
 ```
 
-Required variables:
+Set at minimum:
 
-- `DISCORD_TOKEN`
-- `DISCORD_GUILD_ID` (optional default guild)
-
-## Run locally
-
-```bash
-mvn clean package
-SPRING_PROFILES_ACTIVE=http java -jar target/discord-mcp-1.0.0.jar
+```env
+DISCORD_TOKEN=your_bot_token
+DISCORD_GUILD_ID=optional_default_guild_id
+MCP_HOST=0.0.0.0
+MCP_PORT=8085
+LOG_LEVEL=INFO
+DISCORD_API_BASE_URL=https://discord.com/api/v10
 ```
 
-Health check:
-
-- `http://localhost:8085/actuator/health`
-
-MCP endpoint:
-
-- `http://localhost:8085/mcp`
-
-## Run with Docker
+## 2. Run Locally
 
 ```bash
 docker compose up -d --build
+docker compose ps
 ```
 
-## Repository scope
+Quick runtime check:
 
-This repository contains only the MCP server app.
-Primo slash commands are now maintained in a separate `primo-bot` repository.
+```bash
+docker compose exec -T discord-mcp python - <<'PY'
+from src.server import healthcheck
+print(healthcheck())
+PY
+```
+
+## 3. Tool Surface
+
+Read and inspect:
+
+- `healthcheck`
+- `get_server_info`
+- `list_channels`
+- `find_channel`
+- `get_channel_info`
+- `find_category`
+- `list_channels_in_category`
+- `list_channel_permission_overwrites`
+- `read_messages`
+- `get_attachment`
+- `get_user_id_by_name`
+- `read_private_messages`
+- `list_roles`
+- `get_bans`
+- `list_active_threads`
+- `list_guild_scheduled_events`
+- `get_guild_scheduled_event_users`
+- `list_invites`
+- `get_invite_details`
+- `list_emojis`
+- `get_emoji_details`
+- `list_webhooks`
+
+Write and moderation:
+
+- channel and category create, edit, move, delete
+- channel permission overwrite upsert and delete
+- channel and DM message send, edit, delete
+- message reactions add and remove
+- role create, edit, delete, assign, remove
+- member kick, ban, unban, timeout, nickname, voice state updates
+- voice and stage channel create and edit
+- scheduled event create, edit, delete
+- invite create and delete
+- emoji create, edit, delete
+- webhook create, delete, send message
+
+## 4. Compatibility Notes
+
+- Existing tool names are preserved.
+- Existing camelCase input names are preserved.
+- Outputs are now structured JSON objects instead of free-form strings.
+- `guildId` remains optional when `DISCORD_GUILD_ID` is configured.
+
+## 5. Plugin Wiring
+
+Plugin files live at:
+
+- `/Users/vaughndazo/plugins/discord-admin-mcp/.codex-plugin/plugin.json`
+- `/Users/vaughndazo/plugins/discord-admin-mcp/.mcp.json`
+- `/Users/vaughndazo/plugins/discord-admin-mcp/skills/*`
+
+The plugin start script should launch this repo with Docker Compose instead of pulling the old upstream Java image.
