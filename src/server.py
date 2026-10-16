@@ -7,6 +7,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .discord_api import DiscordApiClient, DiscordApiError
 from .settings import load_settings
+from .member_access import inspect_member
 
 SETTINGS = load_settings()
 CLIENT = DiscordApiClient(SETTINGS.token, SETTINGS.api_base_url)
@@ -88,8 +89,11 @@ PERMISSION_BITS: dict[str, int] = {
     "CREATE_EVENTS": 1 << 44,
     "USE_EXTERNAL_SOUNDS": 1 << 45,
     "SEND_VOICE_MESSAGES": 1 << 46,
+    "SET_VOICE_CHANNEL_STATUS": 1 << 48,
     "SEND_POLLS": 1 << 49,
     "USE_EXTERNAL_APPS": 1 << 50,
+    "PIN_MESSAGES": 1 << 51,
+    "BYPASS_SLOWMODE": 1 << 52,
 }
 
 PERMISSION_ALIASES = {
@@ -417,6 +421,31 @@ def healthcheck() -> dict[str, Any]:
         "credentials_present": True,
         "discord_token": SETTINGS.masked_token,
     }
+
+
+@mcp.tool(name="get_member_access")
+def get_member_access(
+    userId: str,
+    guildId: str | None = None,
+    includeChannels: bool = True,
+    channelLimit: int = 25,
+) -> dict[str, Any]:
+    """Inspect a member's roles and permissions using GET only (1-100 channels).
+
+    Thread access inherits parent overwrites. Private membership is probed for
+    returned threads needing it; lookup errors leave access unknown.
+    """
+    if not isinstance(includeChannels, bool):
+        raise DiscordApiError("includeChannels must be a boolean.")
+    if isinstance(channelLimit, bool) or not isinstance(channelLimit, int) or not 1 <= channelLimit <= 100:
+        raise DiscordApiError("channelLimit must be an integer between 1 and 100.")
+    if guildId is not None and not isinstance(guildId, str):
+        raise DiscordApiError("guildId must be a string.")
+    return inspect_member(
+        CLIENT.request, PERMISSION_BITS, guild_id=_resolve_guild_id(guildId),
+        user_id=userId, include_channels=includeChannels,
+        channel_limit=channelLimit, token=SETTINGS.token,
+    )
 
 
 @mcp.tool(name="get_server_info")
